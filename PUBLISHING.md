@@ -37,6 +37,33 @@ git push
 After this, anyone can `yay -S melo`. On each new version: bump `pkgver`, rerun
 `updpkgsums`, regenerate `.SRCINFO`, commit, push.
 
+## 1b. AUR binary package (`yay -S melo-bin`, no compiling)
+
+`melo-bin` installs a prebuilt binary in seconds instead of compiling. It
+`provides`/`conflicts` `melo`, so users pick one or the other.
+
+```sh
+# 1. Build + package the binary tarball (per architecture, on that arch):
+./packaging/melo-bin/build-release-tarball.sh        # -> dist/melo-<ver>-<arch>.tar.gz
+
+# 2. Attach it to the GitHub release the PKGBUILD points at:
+gh release upload v0.1.0 dist/melo-0.1.0-x86_64.tar.gz
+
+# 3. Publish the recipe to its own AUR repo:
+git clone ssh://aur@aur.archlinux.org/melo-bin.git ~/aur-melo-bin
+cp packaging/melo-bin/PKGBUILD ~/aur-melo-bin/
+cd ~/aur-melo-bin
+updpkgsums                                # checksums of the UPLOADED assets
+makepkg -si                               # verify it installs
+makepkg --printsrcinfo > .SRCINFO
+git add PKGBUILD .SRCINFO
+git commit -m "Initial import: melo-bin 0.1.0"
+git push
+```
+
+The PKGBUILD has both `x86_64` and `aarch64` source slots; if you only upload an
+x86_64 asset, drop the `aarch64` lines (or upload an aarch64 build too).
+
 ## 2. apt — the realistic free options
 
 There is **no single central "apt" registry** like the AUR. Pick one (or several):

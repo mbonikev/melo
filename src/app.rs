@@ -72,6 +72,7 @@ pub struct App {
     media: Option<MediaKeys>,
     media_last: Option<usize>,
     media_paused: Option<bool>,
+    notified: Option<usize>,
     last_theme_check: Instant,
 }
 
@@ -113,8 +114,23 @@ impl App {
             media: MediaKeys::new(),
             media_last: None,
             media_paused: None,
+            notified: None,
             last_theme_check: Instant::now(),
         })
+    }
+
+    /// Send a desktop notification whenever the playing track changes, so the
+    /// song name shows on next/prev/auto-advance (the OS OSD only covers play/pause).
+    fn maybe_notify(&mut self) {
+        match self.current {
+            Some(idx) if self.notified != Some(idx) => {
+                let t = &self.tracks[idx];
+                crate::notify::track(&t.title, &t.artist, &t.album);
+                self.notified = Some(idx);
+            }
+            None => self.notified = None,
+            _ => {}
+        }
     }
 
     /// Pending desktop media-key commands (empty if MPRIS is unavailable).
@@ -381,6 +397,7 @@ impl App {
         }
 
         self.sync_media();
+        self.maybe_notify();
 
         if self.player.is_active() {
             let samples = self.player.samples();

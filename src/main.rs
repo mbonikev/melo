@@ -5,6 +5,7 @@ mod art;
 mod audio;
 mod library;
 mod media;
+mod notify;
 mod theme;
 mod ui;
 mod viz;

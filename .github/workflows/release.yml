@@ -110,3 +110,77 @@ jobs:
           git add packaging/PKGBUILD packaging/melo-bin/PKGBUILD
           git commit -m "ci: update PKGBUILD checksums for ${GITHUB_REF_NAME}"
           git push origin main
+
+  # Push the (now checksum-correct) PKGBUILDs to the AUR.
+  # Requires the repo secret AUR_SSH_PRIVATE_KEY (an SSH key whose public half is
+  # registered on your AUR account). Runs only on the canonical repo, not forks.
+  publish-aur:
+    needs: pkgbuild-checksums
+    if: github.repository == 'mbonikev/melo'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: melo
+            path: packaging/PKGBUILD
+          - name: melo-bin
+            path: packaging/melo-bin/PKGBUILD
+    steps:
+      - name: Install tooling
+        run: pacman -Syu --noconfirm --needed git openssh pacman-contrib
+
+      - name: Checkout main (with updated PKGBUILDs)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Configure SSH for the AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          cat > ~/.ssh/config <<'EOF'
+          Host aur.archlinux.org
+            User aur
+            IdentityFile ~/.ssh/aur
+            StrictHostKeyChecking accept-new
+          EOF
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Publish ${{ matrix.name }} to the AUR
+        env:
+          PKG: ${{ matrix.name }}
+          SRC: ${{ matrix.path }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver="${TAG#v}"
+          # makepkg refuses to run as root, so generate .SRCINFO as an unprivileged user.
+          useradd -m builder
+          git config --global --add safe.directory '*'
+
+          git clone "ssh://aur@aur.archlinux.org/${PKG}.git" aur
+          cp "$SRC" aur/PKGBUILD
+
+          work="$(mktemp -d)"
+          cp "$SRC" "$work/PKGBUILD"
+          chown -R builder "$work"
+          su builder -c "cd '$work' && HOME=/home/builder makepkg --printsrcinfo" > aur/.SRCINFO
+
+          cd aur
+          git config user.name "Mbonikev"
+          git config user.email "mb0ni@proton.me"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "No changes for ${PKG}."
+            exit 0
+          fi
+          git commit -m "${PKG} ${ver} (automated release)"
+          git branch -M master
+          git push origin master

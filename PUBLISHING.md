@@ -11,11 +11,34 @@ This guide covers shipping `melo` to **yay (AUR)** and **apt** — both free.
 3. Computes the source + both binary checksums and **commits the updated
    `packaging/PKGBUILD` and `packaging/melo-bin/PKGBUILD`** (version + sha256s) back to `main`.
 
-So after `git push origin v0.1.0`, the release assets and PKGBUILD checksums are
-ready automatically. You still copy the PKGBUILDs into your AUR checkouts and
-`git push` them (the AUR needs your SSH key — see below). To fully automate the
-AUR push too, add your AUR SSH private key as a repo secret and a publish step;
-ask if you want that wired up.
+4. **Pushes both `melo` and `melo-bin` to the AUR** (the `publish-aur` job) —
+   generates `.SRCINFO` and `git push`es to `ssh://aur@aur.archlinux.org`.
+
+So after `git push origin v0.1.0`, the release assets are uploaded, the PKGBUILD
+checksums are refreshed, **and both AUR packages are updated automatically** —
+`yay -S melo` / `yay -S melo-bin` get the new version with no manual steps.
+
+### One-time setup for the AUR auto-publish
+
+The `publish-aur` job needs an SSH key whose public half is on your AUR account,
+stored as a GitHub **repository secret** named `AUR_SSH_PRIVATE_KEY`.
+
+```sh
+# 1. Make a dedicated key (no passphrase, so CI can use it non-interactively):
+ssh-keygen -t ed25519 -f ~/.ssh/aur_ci -N "" -C "melo-ci"
+
+# 2. Add the PUBLIC key to your AUR account:
+cat ~/.ssh/aur_ci.pub        # paste into https://aur.archlinux.org → My Account → SSH key
+                             # (you can list multiple keys, one per line)
+
+# 3. Add the PRIVATE key as a GitHub secret:
+gh secret set AUR_SSH_PRIVATE_KEY < ~/.ssh/aur_ci   # run in the melo repo
+```
+
+That's it — the job auto-creates the AUR packages on first push (the names must
+be free) and updates them on every tag after. It only runs on `mbonikev/melo`
+(not forks). If the secret is missing the job fails loudly; everything else in
+the release still succeeds.
 
 ## 0. One-time prep
 

@@ -137,30 +137,28 @@ jobs:
         with:
           ref: main
 
-      - name: Configure SSH for the AUR
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          install -dm700 ~/.ssh
-          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          cat > ~/.ssh/config <<'EOF'
-          Host aur.archlinux.org
-            User aur
-            IdentityFile ~/.ssh/aur
-            StrictHostKeyChecking accept-new
-          EOF
-          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
-
       - name: Publish ${{ matrix.name }} to the AUR
         env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           PKG: ${{ matrix.name }}
           SRC: ${{ matrix.path }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ver="${TAG#v}"
+
+          if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::error::AUR_SSH_PRIVATE_KEY secret is not set — add it to publish to the AUR."
+            exit 1
+          fi
+
+          # Absolute paths + GIT_SSH_COMMAND: container HOME isn't reliable across steps.
+          mkdir -p /etc/aur-ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /etc/aur-ssh/key
+          chmod 600 /etc/aur-ssh/key
+          ssh-keyscan aur.archlinux.org > /etc/aur-ssh/known_hosts 2>/dev/null || true
+          export GIT_SSH_COMMAND="ssh -i /etc/aur-ssh/key -o UserKnownHostsFile=/etc/aur-ssh/known_hosts -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
+
           # makepkg refuses to run as root, so generate .SRCINFO as an unprivileged user.
           useradd -m builder
           git config --global --add safe.directory '*'

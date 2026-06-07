@@ -21,6 +21,7 @@ dirs = "5"
 fastrand = "2"
 rustfft = "6"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
+souvlaki = "0.7"
 
 [profile.release]
 lto = true

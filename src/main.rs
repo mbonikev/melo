@@ -4,6 +4,7 @@ mod app;
 mod art;
 mod audio;
 mod library;
+mod media;
 mod theme;
 mod ui;
 mod viz;
@@ -24,8 +25,8 @@ use app::{App, Mode};
 
 /// Frame interval while audio is playing (smooth ~33fps spectrum).
 const TICK_ACTIVE: Duration = Duration::from_millis(33);
-/// Frame interval when idle/paused — easy on the CPU.
-const TICK_IDLE: Duration = Duration::from_millis(200);
+/// Frame interval when idle/paused — easy on the CPU, still responsive to media keys.
+const TICK_IDLE: Duration = Duration::from_millis(100);
 
 fn main() -> Result<()> {
     let root = resolve_root();
@@ -89,6 +90,11 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Resu
             TICK_IDLE
         };
 
+        // Desktop media keys (play/pause, next, prev) arrive over MPRIS.
+        for cmd in app.poll_media() {
+            app.handle_media(cmd);
+        }
+
         if event::poll(tick)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -109,9 +115,26 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Resu
 }
 
 fn handle_normal(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+    // Ctrl+C is always an immediate hard exit.
+    if code == KeyCode::Char('c') && mods.contains(KeyModifiers::CONTROL) {
+        app.confirm_quit_now();
+        return;
+    }
+
+    // When a quit has been requested, the next key answers the prompt.
+    if app.confirm_quit {
+        match code {
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => app.confirm_quit_now(),
+            _ => app.cancel_quit(),
+        }
+        return;
+    }
+
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-        KeyCode::Char('c') if mods.contains(KeyModifiers::CONTROL) => app.should_quit = true,
+        // `q` asks for confirmation; Esc never quits (so it can't close by mistake).
+        KeyCode::Char('q') => app.request_quit(),
+        KeyCode::Esc => {}
+        KeyCode::Char('R') | KeyCode::F(5) => app.refresh(),
         KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
         KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
         KeyCode::Char('g') => app.select_first(),
@@ -169,6 +192,7 @@ fn print_help() {
          \tspace        play/pause    n  next        b/p  previous\n\
          \t←/→ or h/l   seek ∓5s      [ / ] or +/- volume\n\
          \ts            shuffle       r  repeat (off/all/one)\n\
-         \t/            search        q  quit\n"
+         \t/            search        R  refresh library (or F5)\n\
+         \tq            quit (asks to confirm; Esc won't quit)\n"
     );
 }

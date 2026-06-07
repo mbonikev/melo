@@ -12,7 +12,10 @@ pub struct Theme {
     pub accent: Color,
     pub fg: Color,
     pub bg: Color,
-    pub dim: Color,
+    /// Secondary text — dimmer than `fg` but still clearly readable.
+    pub muted: Color,
+    /// Subtle chrome (borders, gauge troughs). Lower contrast than `muted`.
+    pub faint: Color,
     pub red: Color,
     pub green: Color,
     pub yellow: Color,
@@ -30,7 +33,8 @@ impl Default for Theme {
             accent: Color::LightMagenta,
             fg: Color::Reset,
             bg: Color::Reset,
-            dim: Color::DarkGray,
+            muted: Color::Gray,
+            faint: Color::DarkGray,
             red: Color::Red,
             green: Color::Green,
             yellow: Color::Yellow,
@@ -66,11 +70,20 @@ impl Theme {
 
         let get = |k: &str| map.get(k).and_then(|h| hex(h));
         let d = Theme::default();
+
+        let fg = get("foreground").unwrap_or(d.fg);
+        let bg = get("background").unwrap_or(d.bg);
+
+        // Blend fg toward bg so secondary text is readable in light AND dark themes.
+        let muted = blend(fg, bg, 0.32).unwrap_or(d.muted);
+        let faint = blend(fg, bg, 0.55).unwrap_or(d.faint);
+
         Some(Self {
             accent: get("accent").unwrap_or(d.accent),
-            fg: get("foreground").unwrap_or(d.fg),
-            bg: get("background").unwrap_or(d.bg),
-            dim: get("color8").or_else(|| get("color0")).unwrap_or(d.dim),
+            fg,
+            bg,
+            muted,
+            faint,
             red: get("color1").unwrap_or(d.red),
             green: get("color2").unwrap_or(d.green),
             yellow: get("color3").unwrap_or(d.yellow),
@@ -79,6 +92,18 @@ impl Theme {
             cyan: get("color6").unwrap_or(d.cyan),
             source: "omarchy",
         })
+    }
+}
+
+/// Linear blend between two RGB colors; `t` is the weight toward `b`.
+/// Returns `None` if either color isn't RGB (e.g. ANSI `Reset`).
+fn blend(a: Color, b: Color, t: f32) -> Option<Color> {
+    match (a, b) {
+        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
+            let mix = |x: u8, y: u8| (x as f32 * (1.0 - t) + y as f32 * t).round() as u8;
+            Some(Color::Rgb(mix(ar, br), mix(ag, bg), mix(ab, bb)))
+        }
+        _ => None,
     }
 }
 

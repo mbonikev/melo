@@ -65,6 +65,13 @@ impl Visualizer {
                 mag += self.scratch[k].norm();
             }
             mag /= (hi - lo) as f32;
+
+            // Pink/"tilt" compensation: musical energy rolls off ~1/f, which
+            // makes the low bands dominate. Boosting by ~sqrt(frequency) flattens
+            // the spectrum so all bars stay lively and balanced.
+            let center = ((lo + hi) as f32 * 0.5).max(1.0);
+            mag *= center.powf(0.5);
+
             // Log compression so quiet detail is still visible.
             let level = (1.0 + mag).ln();
             frame_max = frame_max.max(level);

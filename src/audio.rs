@@ -80,6 +80,14 @@ impl Player {
         }
     }
 
+    pub fn play(&self) {
+        self.sink.play();
+    }
+
+    pub fn pause(&self) {
+        self.sink.pause();
+    }
+
     pub fn is_paused(&self) -> bool {
         self.sink.is_paused()
     }

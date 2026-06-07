@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use image::DynamicImage;
@@ -10,8 +10,12 @@ use ratatui::widgets::ListState;
 
 use crate::audio::Player;
 use crate::library::{self, Track};
+use crate::media::{MediaCommand, MediaKeys};
 use crate::theme::Theme;
 use crate::viz::Visualizer;
+
+/// How often to re-read the theme file so theme switches show up live.
+const THEME_REFRESH: Duration = Duration::from_millis(750);
 
 /// Number of frequency bars the spectrum analyzer computes.
 const VIZ_BANDS: usize = 48;
@@ -61,9 +65,14 @@ pub struct App {
     pub repeat: Repeat,
     pub shuffle: bool,
     pub should_quit: bool,
+    pub confirm_quit: bool,
     pub status: String,
     pub viz: Visualizer,
     pub art_cache: HashMap<usize, Option<DynamicImage>>,
+    media: Option<MediaKeys>,
+    media_last: Option<usize>,
+    media_paused: Option<bool>,
+    last_theme_check: Instant,
 }
 
 impl App {
@@ -97,10 +106,87 @@ impl App {
             repeat: Repeat::Off,
             shuffle: false,
             should_quit: false,
+            confirm_quit: false,
             status,
             viz: Visualizer::new(VIZ_BANDS),
             art_cache: HashMap::new(),
+            media: MediaKeys::new(),
+            media_last: None,
+            media_paused: None,
+            last_theme_check: Instant::now(),
         })
+    }
+
+    /// Pending desktop media-key commands (empty if MPRIS is unavailable).
+    pub fn poll_media(&self) -> Vec<MediaCommand> {
+        self.media.as_ref().map(|m| m.poll()).unwrap_or_default()
+    }
+
+    pub fn handle_media(&mut self, cmd: MediaCommand) {
+        match cmd {
+            MediaCommand::Toggle => {
+                self.toggle_pause();
+                self.status = if self.player.is_paused() {
+                    "Paused".into()
+                } else {
+                    "Playing".into()
+                };
+            }
+            MediaCommand::Play => {
+                if self.current.is_none() {
+                    self.play_selected();
+                } else {
+                    self.player.play();
+                    self.status = "Playing".into();
+                }
+            }
+            MediaCommand::Pause => {
+                self.player.pause();
+                self.status = "Paused".into();
+            }
+            // next_track / prev_track already set the "Playing <title>" status.
+            MediaCommand::Next => self.next_track(),
+            MediaCommand::Prev => self.prev_track(),
+            MediaCommand::Stop => {
+                self.player.clear();
+                self.current = None;
+                self.status = "Stopped".into();
+            }
+        }
+        // Push the new state to the desktop immediately (name, play/stop state).
+        self.sync_media();
+    }
+
+    /// Push current playback state to the desktop (only when it changes).
+    fn sync_media(&mut self) {
+        let Some(media) = self.media.as_mut() else {
+            return;
+        };
+        match self.current {
+            Some(idx) => {
+                let paused = self.player.is_paused();
+                if self.media_last != Some(idx) || self.media_paused != Some(paused) {
+                    let t = &self.tracks[idx];
+                    media.set_now_playing(
+                        &t.title,
+                        &t.artist,
+                        &t.album,
+                        t.duration,
+                        !paused,
+                        self.player.position(),
+                    );
+                    self.media_last = Some(idx);
+                    self.media_paused = Some(paused);
+                }
+            }
+            None => {
+                if self.media_last.is_some() {
+                    media.set_stopped();
+                    self.media_last = None;
+                    self.media_paused = None;
+                }
+            }
+        }
     }
 
     /// Track index (into `tracks`) currently shown in the info/art panel:
@@ -113,6 +199,42 @@ impl App {
 
     pub fn display_idx(&self) -> Option<usize> {
         self.current.or_else(|| self.selected_track_idx())
+    }
+
+    /// Re-scan the library folder without restarting playback.
+    pub fn refresh(&mut self) {
+        let playing_path = self.current.map(|i| self.tracks[i].path.clone());
+        let selected_path = self.selected_track_idx().map(|i| self.tracks[i].path.clone());
+
+        self.tracks = library::scan(&self.root);
+        self.art_cache.clear();
+        self.theme = Theme::load();
+        self.apply_filter();
+
+        // Keep the currently playing song highlighted/tracked across the rescan.
+        self.current = playing_path.and_then(|p| self.tracks.iter().position(|t| t.path == p));
+        if let Some(sel) = selected_path {
+            if let Some(pos) = self.filtered.iter().position(|&i| self.tracks[i].path == sel) {
+                self.list_state.select(Some(pos));
+            }
+        }
+
+        self.status = format!("Refreshed · {} tracks", self.tracks.len());
+    }
+
+    // ---- quit confirmation --------------------------------------------------
+
+    /// Ask before quitting, so a stray key doesn't kill playback.
+    pub fn request_quit(&mut self) {
+        self.confirm_quit = true;
+    }
+
+    pub fn cancel_quit(&mut self) {
+        self.confirm_quit = false;
+    }
+
+    pub fn confirm_quit_now(&mut self) {
+        self.should_quit = true;
     }
 
     // ---- selection ----------------------------------------------------------
@@ -251,6 +373,14 @@ impl App {
     /// Called every frame: advance the queue, update the spectrum, preload art.
     pub fn on_tick(&mut self) {
         self.advance_if_finished();
+
+        // Live-reload the theme so omarchy theme/light-dark switches apply at runtime.
+        if self.last_theme_check.elapsed() >= THEME_REFRESH {
+            self.theme = Theme::load();
+            self.last_theme_check = Instant::now();
+        }
+
+        self.sync_media();
 
         if self.player.is_active() {
             let samples = self.player.samples();

@@ -9,7 +9,7 @@ license=('MIT')
 depends=('alsa-lib' 'libnotify' 'dbus')
 makedepends=('cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')  # replace SKIP with the real checksum: updpkgsums
+sha256sums=('c1d565f982420c7ae0750ab09fe6f311c10fe44f89f579a4475eed40756790ef')
 
 prepare() {
     cd "$pkgname-$pkgver"

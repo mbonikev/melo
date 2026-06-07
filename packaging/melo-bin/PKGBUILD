@@ -17,8 +17,8 @@ source_x86_64=("$_pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver
 source_aarch64=("$_pkgname-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-aarch64.tar.gz")
 
 # Replace SKIP with the real checksums: `updpkgsums` (after uploading the assets).
-sha256sums_x86_64=('a4e9cdb50fbce23965784f091c17bb6001bf78eafd9b516d41230a00cc1385f0')
-sha256sums_aarch64=('5755934e62c434fa51e60e575407bf7a11d95ea366b4fc9128ecb018ab76aa1a')
+sha256sums_x86_64=('3c7136354d468e95a3792dea8e79713d3cdfb2da454e2bdfaeff225a9d289fdc')
+sha256sums_aarch64=('bad1dc36de75909fbdd69ff17cfe6509a496fdc0d3416b50de48034f50a9dfeb')
 
 package() {
     install -Dm755 "$_pkgname" "$pkgdir/usr/bin/$_pkgname"

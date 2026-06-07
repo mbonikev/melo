@@ -124,8 +124,13 @@ impl App {
     fn maybe_notify(&mut self) {
         match self.current {
             Some(idx) if self.notified != Some(idx) => {
-                let t = &self.tracks[idx];
-                crate::notify::track(&t.title, &t.artist, &t.album);
+                // Only notify on track-to-track changes (next/prev/auto-advance).
+                // A fresh start from stopped is already covered by the OS play OSD,
+                // so skipping it here avoids a double popup.
+                if self.notified.is_some() {
+                    let t = &self.tracks[idx];
+                    crate::notify::track(&t.title, &t.artist, &t.album);
+                }
                 self.notified = Some(idx);
             }
             None => self.notified = None,

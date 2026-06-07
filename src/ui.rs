@@ -521,8 +521,6 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             let keys = "↑↓ move  ⏎ play  space pause  n/b next/prev  ←→ seek  [ ] vol  s shuffle  r repeat  / search  R refresh  q quit";
             Line::from(vec![
                 Span::raw(" "),
-                Span::styled(app.status.clone(), Style::default().fg(t.green)),
-                Span::raw("   "),
                 Span::styled(keys, Style::default().fg(t.muted)),
             ])
         }

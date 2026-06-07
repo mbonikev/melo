@@ -4,7 +4,7 @@ This guide covers shipping `melo` to **yay (AUR)** and **apt** — both free.
 
 ## 0. One-time prep
 
-1. Push this repo to GitHub (e.g. `github.com/yourname/melo`).
+1. Push this repo to GitHub (e.g. `github.com/mbonikev/melo`).
    Update the `url`/`repository` fields in `Cargo.toml` and `packaging/PKGBUILD`.
 2. Tag a release so the source tarball exists:
 
@@ -62,7 +62,7 @@ Free, but Ubuntu-only and builds from source on Launchpad. Create a Launchpad
 account, a PPA, then `dput` a source package. Users then:
 
 ```sh
-sudo add-apt-repository ppa:yourname/melo
+sudo add-apt-repository ppa:mbonikev/melo
 sudo apt update && sudo apt install melo
 ```
 

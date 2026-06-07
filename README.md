@@ -59,7 +59,7 @@ yay -S melo
 
 ### Debian / Ubuntu (.deb)
 
-Download the `.deb` from the [releases page](https://github.com/yourname/melo/releases) and:
+Download the `.deb` from the [releases page](https://github.com/mbonikev/melo/releases) and:
 
 ```sh
 sudo apt install ./melo_0.1.0_amd64.deb
@@ -71,7 +71,7 @@ Requires the Rust toolchain and ALSA headers (`libasound2-dev` on Debian,
 `alsa-lib` on Arch).
 
 ```sh
-git clone https://github.com/yourname/melo
+git clone https://github.com/mbonikev/melo
 cd melo
 cargo install --path .
 ```

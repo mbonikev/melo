@@ -83,5 +83,7 @@ A Flatpak (Flathub, free) covers any distro with one package, if you want it lat
 ## Build dependency note
 
 `melo` links ALSA at runtime. Build hosts need the dev package:
-`alsa-lib` (Arch) or `libasound2-dev` (Debian/Ubuntu). The `depends`/`$auto`
-fields in the PKGBUILD and deb metadata declare the runtime lib for users.
+`alsa-lib` (Arch) or `libasound2-dev` (Debian/Ubuntu). It also calls
+`notify-send` for track-change popups: `libnotify` (Arch) / `libnotify-bin`
+(Debian/Ubuntu). Both runtime deps are declared in the PKGBUILD `depends` and
+the deb metadata, so users get them automatically.

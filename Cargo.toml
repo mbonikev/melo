@@ -1,0 +1,43 @@
+[package]
+name = "melo"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mbonikev <mb0ni@proton.me>"]
+description = "A stylish TUI music player for local libraries that follows your terminal / omarchy theme"
+license = "MIT"
+repository = "https://github.com/yourname/melo"
+readme = "README.md"
+keywords = ["music", "player", "tui", "audio", "terminal"]
+categories = ["multimedia::audio", "command-line-utilities"]
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
+lofty = "0.22"
+walkdir = "2"
+anyhow = "1"
+dirs = "5"
+fastrand = "2"
+rustfft = "6"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
+
+[profile.release]
+lto = true
+strip = true
+opt-level = 3
+codegen-units = 1
+
+# cargo-deb metadata: `cargo deb` produces a .deb from this
+[package.metadata.deb]
+maintainer = "Mbonikev <mb0ni@proton.me>"
+copyright = "2026, Mbonikev <mb0ni@proton.me>"
+license-file = ["LICENSE", "0"]
+extended-description = "melo is a fast, keyboard-driven terminal music player for your local library. It follows your terminal / omarchy theme and needs no online services."
+depends = "$auto"
+section = "sound"
+priority = "optional"
+assets = [
+    ["target/release/melo", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/melo/README", "644"],
+]

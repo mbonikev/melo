@@ -1,17 +1,46 @@
 name: release
 
-# Runs when you push a version tag, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+# Push-once workflow: on every push to main, if the version in Cargo.toml hasn't
+# been released yet, CI tags it, builds binaries, publishes the GitHub Release,
+# and syncs both AUR packages. Bump the version + push = a full release.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # Decide whether this push is a new release (Cargo.toml version not yet tagged).
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          set -euo pipefail
+          ver="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$ver" >/dev/null 2>&1; then
+            echo "v$ver is already released — nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version v$ver — tagging and releasing."
+            git tag "v$ver"
+            git push origin "v$ver"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Build a native binary per arch, package it, and attach it to the release.
   build:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
     strategy:
       matrix:
         include:
@@ -37,8 +66,7 @@ jobs:
       - name: Package tarball
         id: pkg
         run: |
-          ver="${GITHUB_REF_NAME#v}"
-          name="melo-${ver}-${{ matrix.arch }}"
+          name="melo-${VERSION}-${{ matrix.arch }}"
           mkdir -p dist/stage
           install -m755 target/release/melo dist/stage/melo
           install -m644 LICENSE dist/stage/LICENSE
@@ -49,12 +77,16 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.gate.outputs.version }}
           files: ${{ steps.pkg.outputs.tarball }}
 
   # After both binaries are uploaded, compute checksums and update the PKGBUILDs.
   pkgbuild-checksums:
-    needs: build
+    needs: [gate, build]
+    if: needs.gate.outputs.release == 'true'
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -64,39 +96,34 @@ jobs:
       - name: Compute checksums and update PKGBUILDs
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          ver="${TAG#v}"
+          tag="v${VERSION}"
 
           # Source tarball that the `melo` PKGBUILD builds from (GitHub auto-generates it).
-          curl -fsSL -o src.tar.gz "https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          curl -fsSL -o src.tar.gz "https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
           src_sha="$(sha256sum src.tar.gz | cut -d' ' -f1)"
 
           # Prebuilt binary tarballs that the `melo-bin` PKGBUILD downloads.
-          gh release download "$TAG" -R "$REPO" -p 'melo-*-x86_64.tar.gz' -p 'melo-*-aarch64.tar.gz' -D bins
-          x86_sha="$(sha256sum bins/melo-${ver}-x86_64.tar.gz | cut -d' ' -f1)"
-          arm_sha="$(sha256sum bins/melo-${ver}-aarch64.tar.gz | cut -d' ' -f1)"
+          gh release download "$tag" -R "$REPO" -p 'melo-*-x86_64.tar.gz' -p 'melo-*-aarch64.tar.gz' -D bins
+          x86_sha="$(sha256sum bins/melo-${VERSION}-x86_64.tar.gz | cut -d' ' -f1)"
+          arm_sha="$(sha256sum bins/melo-${VERSION}-aarch64.tar.gz | cut -d' ' -f1)"
 
           # --- source PKGBUILD ---
           sed -i -E \
-            -e "s/^pkgver=.*/pkgver=${ver}/" \
+            -e "s/^pkgver=.*/pkgver=${VERSION}/" \
             -e "s/^pkgrel=.*/pkgrel=1/" \
             -e "s/^sha256sums=.*/sha256sums=('${src_sha}')/" \
             packaging/PKGBUILD
 
           # --- melo-bin PKGBUILD ---
           sed -i -E \
-            -e "s/^pkgver=.*/pkgver=${ver}/" \
+            -e "s/^pkgver=.*/pkgver=${VERSION}/" \
             -e "s/^pkgrel=.*/pkgrel=1/" \
             -e "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${x86_sha}')/" \
             -e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${arm_sha}')/" \
             packaging/melo-bin/PKGBUILD
-
-          echo "source:      $src_sha"
-          echo "bin x86_64:  $x86_sha"
-          echo "bin aarch64: $arm_sha"
 
       - name: Commit updated PKGBUILDs
         run: |
@@ -108,18 +135,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add packaging/PKGBUILD packaging/melo-bin/PKGBUILD
-          git commit -m "ci: update PKGBUILD checksums for ${GITHUB_REF_NAME}"
+          git commit -m "ci: update PKGBUILD checksums for v${VERSION} [skip ci]"
           git push origin main
 
   # Push the (now checksum-correct) PKGBUILDs to the AUR.
   # Requires the repo secret AUR_SSH_PRIVATE_KEY (an SSH key whose public half is
   # registered on your AUR account). Runs only on the canonical repo, not forks.
   publish-aur:
-    needs: pkgbuild-checksums
-    if: github.repository == 'mbonikev/melo'
+    needs: [gate, pkgbuild-checksums]
+    if: needs.gate.outputs.release == 'true' && github.repository == 'mbonikev/melo'
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -142,10 +171,8 @@ jobs:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           PKG: ${{ matrix.name }}
           SRC: ${{ matrix.path }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          ver="${TAG#v}"
 
           if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
             echo "::error::AUR_SSH_PRIVATE_KEY secret is not set — add it to publish to the AUR."
@@ -179,6 +206,6 @@ jobs:
             echo "No changes for ${PKG}."
             exit 0
           fi
-          git commit -m "${PKG} ${ver} (automated release)"
+          git commit -m "${PKG} ${VERSION} (automated release)"
           git branch -M master
           git push origin master

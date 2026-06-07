@@ -77,12 +77,25 @@ fn render_body(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let line = Line::from(vec![
+    let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
+
+    // Title + library path on the left, version pinned to the right.
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(version.chars().count() as u16)])
+        .split(area);
+
+    let left = Line::from(vec![
         Span::styled(" ♪ melo ", Style::default().fg(t.bg).bg(t.accent).bold()),
         Span::raw("  "),
         Span::styled(app.root.display().to_string(), Style::default().fg(t.muted)),
     ]);
-    f.render_widget(Paragraph::new(line), area);
+    f.render_widget(Paragraph::new(left), cols[0]);
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(version, Style::default().fg(t.muted))))
+            .alignment(Alignment::Right),
+        cols[1],
+    );
 }
 
 fn render_library(f: &mut Frame, app: &mut App, area: Rect) {

@@ -2,21 +2,32 @@
 
 This guide covers shipping `melo` to **yay (AUR)** and **apt** — both free.
 
-## Automated releases (GitHub Actions)
+## Automated releases — just push to main
 
-`.github/workflows/release.yml` runs on every `v*` tag push and:
+`Cargo.toml`'s `version` is the single source of truth. To cut a release, bump
+it and push to `main` (or run `./scripts/release.sh X.Y.Z`, which bumps the
+version, refreshes `Cargo.lock`, commits, and pushes for you).
 
-1. Builds native `x86_64` + `aarch64` binaries (ALSA installed on the runners).
-2. Packages each into `melo-<ver>-<arch>.tar.gz` and uploads them to the GitHub Release.
-3. Computes the source + both binary checksums and **commits the updated
-   `packaging/PKGBUILD` and `packaging/melo-bin/PKGBUILD`** (version + sha256s) back to `main`.
+`.github/workflows/release.yml` then, on every push to `main`:
 
-4. **Pushes both `melo` and `melo-bin` to the AUR** (the `publish-aur` job) —
-   generates `.SRCINFO` and `git push`es to `ssh://aur@aur.archlinux.org`.
+1. **`gate`** — reads the version from `Cargo.toml`. If `vX.Y.Z` isn't tagged yet,
+   it creates and pushes the tag and proceeds; otherwise it stops (normal pushes
+   do nothing).
+2. **`build`** — native `x86_64` + `aarch64` binaries → `melo-<ver>-<arch>.tar.gz`
+   uploaded to the GitHub Release.
+3. **`pkgbuild-checksums`** — computes source + both binary checksums and commits
+   the updated `packaging/PKGBUILD` + `packaging/melo-bin/PKGBUILD` back to `main`.
+4. **`publish-aur`** — generates `.SRCINFO` and `git push`es **both `melo` and
+   `melo-bin`** to `ssh://aur@aur.archlinux.org`.
 
-So after `git push origin v0.1.0`, the release assets are uploaded, the PKGBUILD
-checksums are refreshed, **and both AUR packages are updated automatically** —
-`yay -S melo` / `yay -S melo-bin` get the new version with no manual steps.
+So the entire flow is: **bump the version, push once — the GitHub Release and both
+AUR packages sync automatically.** `yay -S melo` / `yay -S melo-bin` get the new
+version with zero manual steps. (Pushes that don't change the version are normal
+CI and trigger no release.)
+
+> Bumping the version changes `Cargo.lock` too (the `--locked`/`--frozen` builds
+> require it). `scripts/release.sh` handles that; if you bump by hand, run
+> `cargo build` and commit `Cargo.lock` alongside `Cargo.toml`.
 
 ### One-time setup for the AUR auto-publish
 
@@ -35,8 +46,8 @@ cat ~/.ssh/aur_ci.pub        # paste into https://aur.archlinux.org → My Accou
 gh secret set AUR_SSH_PRIVATE_KEY < ~/.ssh/aur_ci   # run in the melo repo
 ```
 
-That's it — the job auto-creates the AUR packages on first push (the names must
-be free) and updates them on every tag after. It only runs on `mbonikev/melo`
+That's it — the job auto-creates the AUR packages on first release (the names must
+be free) and updates them on every release after. It only runs on `mbonikev/melo`
 (not forks). If the secret is missing the job fails loudly; everything else in
 the release still succeeds.
 

@@ -37,6 +37,10 @@ fn main() -> Result<()> {
             print_help();
             return Ok(());
         }
+        if arg == "-V" || arg == "--version" {
+            println!("melo v{}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
         if arg == "--scan" {
             return scan_report(root);
         }

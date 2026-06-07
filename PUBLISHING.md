@@ -2,6 +2,21 @@
 
 This guide covers shipping `melo` to **yay (AUR)** and **apt** — both free.
 
+## Automated releases (GitHub Actions)
+
+`.github/workflows/release.yml` runs on every `v*` tag push and:
+
+1. Builds native `x86_64` + `aarch64` binaries (ALSA installed on the runners).
+2. Packages each into `melo-<ver>-<arch>.tar.gz` and uploads them to the GitHub Release.
+3. Computes the source + both binary checksums and **commits the updated
+   `packaging/PKGBUILD` and `packaging/melo-bin/PKGBUILD`** (version + sha256s) back to `main`.
+
+So after `git push origin v0.1.0`, the release assets and PKGBUILD checksums are
+ready automatically. You still copy the PKGBUILDs into your AUR checkouts and
+`git push` them (the AUR needs your SSH key — see below). To fully automate the
+AUR push too, add your AUR SSH private key as a repo secret and a publish step;
+ask if you want that wired up.
+
 ## 0. One-time prep
 
 1. Push this repo to GitHub (e.g. `github.com/mbonikev/melo`).

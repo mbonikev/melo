@@ -1,0 +1,112 @@
+name: release
+
+# Runs when you push a version tag, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Build a native binary per arch, package it, and attach it to the release.
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm # free ARM runner for public repos
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package tarball
+        id: pkg
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          name="melo-${ver}-${{ matrix.arch }}"
+          mkdir -p dist/stage
+          install -m755 target/release/melo dist/stage/melo
+          install -m644 LICENSE dist/stage/LICENSE
+          install -m644 README.md dist/stage/README.md
+          tar -czf "dist/${name}.tar.gz" -C dist/stage melo LICENSE README.md
+          echo "tarball=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.tarball }}
+
+  # After both binaries are uploaded, compute checksums and update the PKGBUILDs.
+  pkgbuild-checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Compute checksums and update PKGBUILDs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ver="${TAG#v}"
+
+          # Source tarball that the `melo` PKGBUILD builds from (GitHub auto-generates it).
+          curl -fsSL -o src.tar.gz "https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          src_sha="$(sha256sum src.tar.gz | cut -d' ' -f1)"
+
+          # Prebuilt binary tarballs that the `melo-bin` PKGBUILD downloads.
+          gh release download "$TAG" -R "$REPO" -p 'melo-*-x86_64.tar.gz' -p 'melo-*-aarch64.tar.gz' -D bins
+          x86_sha="$(sha256sum bins/melo-${ver}-x86_64.tar.gz | cut -d' ' -f1)"
+          arm_sha="$(sha256sum bins/melo-${ver}-aarch64.tar.gz | cut -d' ' -f1)"
+
+          # --- source PKGBUILD ---
+          sed -i -E \
+            -e "s/^pkgver=.*/pkgver=${ver}/" \
+            -e "s/^pkgrel=.*/pkgrel=1/" \
+            -e "s/^sha256sums=.*/sha256sums=('${src_sha}')/" \
+            packaging/PKGBUILD
+
+          # --- melo-bin PKGBUILD ---
+          sed -i -E \
+            -e "s/^pkgver=.*/pkgver=${ver}/" \
+            -e "s/^pkgrel=.*/pkgrel=1/" \
+            -e "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${x86_sha}')/" \
+            -e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${arm_sha}')/" \
+            packaging/melo-bin/PKGBUILD
+
+          echo "source:      $src_sha"
+          echo "bin x86_64:  $x86_sha"
+          echo "bin aarch64: $arm_sha"
+
+      - name: Commit updated PKGBUILDs
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No PKGBUILD changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packaging/PKGBUILD packaging/melo-bin/PKGBUILD
+          git commit -m "ci: update PKGBUILD checksums for ${GITHUB_REF_NAME}"
+          git push origin main

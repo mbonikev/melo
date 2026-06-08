@@ -69,8 +69,7 @@ sudo apt install ./melo_0.1.0_amd64.deb
 
 Requires the Rust toolchain, ALSA headers (`libasound2-dev` on Debian,
 `alsa-lib` on Arch), and D-Bus dev files for media-key support
-(`libdbus-1-dev` on Debian, `dbus` on Arch). Desktop notifications use
-`notify-send` from `libnotify` (`libnotify-bin` on Debian).
+(`libdbus-1-dev` on Debian, `dbus` on Arch).
 
 ```sh
 git clone https://github.com/mbonikev/melo

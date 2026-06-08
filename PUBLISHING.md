@@ -160,7 +160,5 @@ A Flatpak (Flathub, free) covers any distro with one package, if you want it lat
 
 `melo` links ALSA and D-Bus (media keys via MPRIS) at runtime. Build hosts need
 the dev packages: `alsa-lib` + `dbus` (Arch) or `libasound2-dev` +
-`libdbus-1-dev` (Debian/Ubuntu). It also calls `notify-send` for track-change
-popups: `libnotify` (Arch) / `libnotify-bin` (Debian/Ubuntu). All runtime deps
-are declared in the PKGBUILD `depends` and the deb metadata, so users get them
-automatically.
+`libdbus-1-dev` (Debian/Ubuntu). These runtime deps are declared in the PKGBUILD
+`depends` and the deb metadata, so users get them automatically.

@@ -1,6 +1,6 @@
 [package]
 name = "melo"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Mbonikev <mb0ni@proton.me>"]
 description = "A stylish TUI music player for local libraries that follows your terminal / omarchy theme"
